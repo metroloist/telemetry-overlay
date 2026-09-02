@@ -49,6 +49,13 @@ class MainActivity:ComponentActivity(){
             player.setMediaItems(videos.map{MediaItem.fromUri(it.uri)});player.prepare()
         }
     }
+    val addVideoPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        uri?.let{
+            videos=(videos+readVideoInfo(context,it)).distinctBy{clip->clip.uri}
+                .sortedWith(compareBy(nullsLast()){clip->clip.startTimeMs})
+            player.setMediaItems(videos.map{clip->MediaItem.fromUri(clip.uri)});player.prepare()
+        }
+    }
     val dataPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         uri?.let{runCatching{
             val bytes=context.contentResolver.openInputStream(it)!!.use{stream->stream.readBytes()}
@@ -86,7 +93,14 @@ class MainActivity:ComponentActivity(){
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("TELEMETRY OVERLAY",style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.primary)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({videoPicker.launch(arrayOf("video/*"))}){Text("Выбрать видео")};Button({dataPicker.launch(arrayOf("*/*"))}){Text("GPX / FIT")}}
-            if(videos.isNotEmpty()){Text("Выбрано видео: ${videos.size}",color=Color.Gray);AndroidView({PlayerView(it).apply{this.player=player;useController=true}},Modifier.fillMaxWidth().aspectRatio(16/9f))}
+            if(videos.isNotEmpty()){
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    OutlinedButton({addVideoPicker.launch(arrayOf("video/*"))}){Text("Добавить ещё видео")}
+                    TextButton({videos=emptyList();player.clearMediaItems();syncStatus=null}){Text("Очистить")}
+                }
+                Text("Выбрано видео: ${videos.size}",color=Color.Gray)
+                AndroidView({PlayerView(it).apply{this.player=player;useController=true}},Modifier.fillMaxWidth().aspectRatio(16/9f))
+            }
             if(track!=null){TelemetryPanel(point);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)};Text("Ручная поправка: ${fmt(offsetTenths/10.0)} с")
                 Slider(offsetTenths.toFloat().coerceIn(-216000f,216000f),{offsetTenths=it.roundToInt()},valueRange=-216000f..216000f)
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){listOf(-10,-1,1,10).forEach{d->OutlinedButton({offsetTenths+=d}){Text(if(d>0)"+${d/10.0}" else "${d/10.0}")}}}
