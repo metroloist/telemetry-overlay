@@ -2,6 +2,7 @@ package app.telemetry.overlay
 
 import android.net.Uri
 import android.os.Bundle
+import android.media.MediaMetadataRetriever
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -21,6 +22,10 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import java.io.ByteArrayInputStream
 import java.util.Locale
+import java.util.TimeZone
+import java.text.SimpleDateFormat
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class MainActivity:ComponentActivity(){
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{App()}}
@@ -30,6 +35,8 @@ class MainActivity:ComponentActivity(){
     val context=androidx.compose.ui.platform.LocalContext.current
     var video by remember{mutableStateOf<Uri?>(null)}; var track by remember{mutableStateOf<TelemetryTrack?>(null)}
     var error by remember{mutableStateOf<String?>(null)}; var offsetTenths by remember{mutableIntStateOf(0)}
+    var videoStartMs by remember{mutableStateOf<Long?>(null)}
+    var syncStatus by remember{mutableStateOf<String?>(null)}
     var exporter by remember{mutableStateOf<VideoExporter?>(null)}
     var exportProgress by remember{mutableIntStateOf(-1)}
     var exportDone by remember{mutableStateOf(false)}
@@ -37,13 +44,31 @@ class MainActivity:ComponentActivity(){
     DisposableEffect(Unit){onDispose{player.release()}}
     var position by remember{mutableLongStateOf(0)}
     LaunchedEffect(player){while(true){position=player.currentPosition;delay(100)}}
-    val videoPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->uri?.let{video=it;player.setMediaItem(MediaItem.fromUri(it));player.prepare()}}
+    val videoPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->uri?.let{
+        video=it
+        videoStartMs=readVideoCreationTimeMs(context,it)
+        player.setMediaItem(MediaItem.fromUri(it));player.prepare()
+    }}
     val dataPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         uri?.let{runCatching{
             val bytes=context.contentResolver.openInputStream(it)!!.use{stream->stream.readBytes()}
             val isFit=bytes.size>=12 && String(bytes,8,4,Charsets.US_ASCII)==".FIT"
             if(isFit) FitParser.parse(ByteArrayInputStream(bytes)) else GpxParser.parse(ByteArrayInputStream(bytes))
         }.onSuccess{track=it;error=null}.onFailure{e->error=e.message}}
+    }
+    LaunchedEffect(videoStartMs,track){
+        val videoTime=videoStartMs; val telemetryTime=track?.startTimeMs
+        if(videoTime!=null && telemetryTime!=null){
+            val delta=telemetryTime-videoTime
+            if(abs(delta)<=6*60*60*1000L){
+                offsetTenths=(delta/100.0).roundToInt()
+                syncStatus="Синхронизировано по времени файла: ${fmt(offsetTenths/10.0)} с"
+            }else{
+                syncStatus="Автосинхронизация невозможна: даты видео и телеметрии не совпадают"
+            }
+        }else if(video!=null && track!=null){
+            syncStatus="В видео нет времени создания — используйте ручной сдвиг"
+        }
     }
     val savePicker=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")){destination->
         if(destination!=null && video!=null && track!=null){
@@ -61,8 +86,8 @@ class MainActivity:ComponentActivity(){
             Text("TELEMETRY OVERLAY",style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.primary)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({videoPicker.launch(arrayOf("video/*"))}){Text("Выбрать видео")};Button({dataPicker.launch(arrayOf("*/*"))}){Text("GPX / FIT")}}
             if(video!=null) AndroidView({PlayerView(it).apply{this.player=player;useController=true}},Modifier.fillMaxWidth().aspectRatio(16/9f))
-            if(track!=null){TelemetryPanel(point);Text("Сдвиг телеметрии: ${fmt(offsetTenths/10.0)} с")
-                Slider(offsetTenths.toFloat(),{offsetTenths=it.toInt()},valueRange=-600f..600f,steps=1199)
+            if(track!=null){TelemetryPanel(point);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)};Text("Сдвиг телеметрии: ${fmt(offsetTenths/10.0)} с")
+                Slider(offsetTenths.toFloat().coerceIn(-216000f,216000f),{offsetTenths=it.roundToInt()},valueRange=-216000f..216000f)
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){listOf(-10,-1,1,10).forEach{d->OutlinedButton({offsetTenths+=d}){Text(if(d>0)"+${d/10.0}" else "${d/10.0}")}}}
                 Text("${track!!.source}: ${track!!.points.size} точек • точная настройка 0,1 с",color=Color.Gray)
                 Button(
@@ -94,3 +119,15 @@ class MainActivity:ComponentActivity(){
 }
 @Composable private fun Gauge(name:String,value:String?,unit:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(name,color=Color.Gray,style=MaterialTheme.typography.labelSmall);Text(value?:"—",style=MaterialTheme.typography.headlineSmall);Text(unit,color=Color.Gray,style=MaterialTheme.typography.labelSmall)}}
 private fun fmt(v:Double)=String.format(Locale.US,"%.1f",v)
+
+private fun readVideoCreationTimeMs(context:android.content.Context,uri:Uri):Long?{
+    val retriever=MediaMetadataRetriever()
+    return try{
+        retriever.setDataSource(context,uri)
+        val raw=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE) ?: return null
+        val patterns=listOf("yyyyMMdd'T'HHmmss.SSS'Z'","yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'","yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+        patterns.firstNotNullOfOrNull{pattern->runCatching{
+            SimpleDateFormat(pattern,Locale.US).apply{timeZone=TimeZone.getTimeZone("UTC");isLenient=false}.parse(raw)?.time
+        }.getOrNull()}
+    }finally{retriever.release()}
+}
