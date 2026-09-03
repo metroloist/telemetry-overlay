@@ -154,7 +154,16 @@ private fun formatTime(ms:Long)=String.format(Locale.US,"%02d:%02d:%02d",ms/3_60
 @Composable private fun RoutePreview(track:TelemetryTrack,cursorMs:Long){
     val gps=track.points.filter{it.latitude!=null&&it.longitude!=null};if(gps.size<2)return
     val now=track.points.first().timeMs+cursorMs;val minLat=gps.minOf{it.latitude!!};val maxLat=gps.maxOf{it.latitude!!};val minLon=gps.minOf{it.longitude!!};val maxLon=gps.maxOf{it.longitude!!}
-    Canvas(Modifier.fillMaxWidth().height(150.dp).background(Color(0xff11161d)).padding(12.dp)){fun x(v:Double)=((v-minLon)/(maxLon-minLon).coerceAtLeast(1e-9)*size.width).toFloat();fun y(v:Double)=(size.height-(v-minLat)/(maxLat-minLat).coerceAtLeast(1e-9)*size.height).toFloat();fun draw(until:Long,color:Color){val p=androidx.compose.ui.graphics.Path();var first=true;gps.forEach{g->if(g.timeMs<=until){if(first){p.moveTo(x(g.longitude!!),y(g.latitude!!));first=false}else p.lineTo(x(g.longitude!!),y(g.latitude!!))}};drawPath(p,color,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))};draw(Long.MAX_VALUE,Color.Gray);draw(now,Color(0xff75e6a4))}
+    Canvas(Modifier.fillMaxWidth().height(150.dp).background(Color(0xff11161d)).padding(12.dp)){
+        fun px(v:Double):Float=((v-minLon)/(maxLon-minLon).coerceAtLeast(1e-9)*size.width).toFloat()
+        fun py(v:Double):Float=(size.height-(v-minLat)/(maxLat-minLat).coerceAtLeast(1e-9)*size.height).toFloat()
+        fun route(until:Long,color:Color){
+            val path=androidx.compose.ui.graphics.Path();var first=true
+            gps.forEach{g->if(g.timeMs<=until){if(first){path.moveTo(px(g.longitude!!),py(g.latitude!!));first=false}else path.lineTo(px(g.longitude!!),py(g.latitude!!))}}
+            drawPath(path,color,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+        }
+        route(Long.MAX_VALUE,Color.Gray);route(now,Color(0xff75e6a4))
+    }
 }
 
 private fun readVideoInfo(context:android.content.Context,uri:Uri):VideoClip{
