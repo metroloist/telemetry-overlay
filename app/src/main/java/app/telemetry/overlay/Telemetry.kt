@@ -34,3 +34,15 @@ data class TelemetryTrack(val points: List<TelemetryPoint>, val source: String) 
             i(a.powerW,b.powerW), d(a.latitude,b.latitude), d(a.longitude,b.longitude))
     }
 }
+
+data class SyncAnchor(val videoMs:Long,val telemetryMs:Long)
+
+fun mappedTelemetryMs(videoMs:Long,anchors:List<SyncAnchor>):Long=when{
+    anchors.isEmpty()->videoMs
+    anchors.size==1->videoMs+anchors[0].telemetryMs-anchors[0].videoMs
+    else->{
+        val a=anchors.first();val b=anchors.last()
+        if(b.videoMs==a.videoMs)videoMs+a.telemetryMs-a.videoMs
+        else (a.telemetryMs+(videoMs-a.videoMs).toDouble()*(b.telemetryMs-a.telemetryMs)/(b.videoMs-a.videoMs)).toLong()
+    }
+}
