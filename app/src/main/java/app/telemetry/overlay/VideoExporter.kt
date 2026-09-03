@@ -68,13 +68,11 @@ class VideoExporter(
     }
 
     fun start() {
-        var elapsedMs=0L
-        val items=sources.mapIndexed{index,source->
-            val overlay=TelemetryCanvasOverlay(telemetry,elapsedMs,anchors,manualOffsetMs)
+        val items=sources.map{source->
+            val overlay=TelemetryCanvasOverlay(telemetry,anchors,manualOffsetMs)
             val videoEffects:List<Effect> = listOf(OverlayEffect(listOf(overlay)))
             EditedMediaItem.Builder(MediaItem.fromUri(source.uri))
                 .setEffects(Effects(emptyList(),videoEffects)).build()
-                .also{elapsedMs+=source.durationMs}
         }
         val sequence=EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO,C.TRACK_TYPE_VIDEO))
             .addItems(items).build()
