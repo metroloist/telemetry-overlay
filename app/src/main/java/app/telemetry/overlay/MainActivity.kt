@@ -142,7 +142,7 @@ class MainActivity:ComponentActivity(){
         Gauge("ДИСТАНЦИЯ",p?.distanceM?.let{fmt(it/1000)},"км");Gauge("НАБОР",p?.ascentM?.let{fmt(it)},"м");Gauge("ВЫСОТА",p?.altitudeM?.let{fmt(it)},"м")
     }
 }
-@Composable private fun Gauge(name:String,value:String?,unit:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(name,color=Color.Gray,style=MaterialTheme.typography.labelSmall);Text(value?:"—",style=MaterialTheme.typography.headlineSmall);Text(unit,color=Color.Gray,style=MaterialTheme.typography.labelSmall)}}
+@Composable private fun Gauge(name:String,value:String?,unit:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(name,color=Color(0xffb8bdc7),style=MaterialTheme.typography.labelSmall);Text(value?:"—",color=Color.White,style=MaterialTheme.typography.headlineSmall);Text(unit,color=Color(0xffb8bdc7),style=MaterialTheme.typography.labelSmall)}}
 private fun fmt(v:Double)=String.format(Locale.US,"%.1f",v)
 private fun formatTime(ms:Long)=String.format(Locale.US,"%02d:%02d:%02d",ms/3_600_000,(ms/60_000)%60,(ms/1000)%60)
 
