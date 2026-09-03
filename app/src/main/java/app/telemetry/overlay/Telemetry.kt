@@ -18,6 +18,7 @@ data class TelemetryTrack(val points: List<TelemetryPoint>, val source: String) 
     fun atVideoTime(videoTimeMs: Long, offsetMs: Long): TelemetryPoint? {
         if (points.isEmpty()) return null
         val target = (startTimeMs ?: return null) + videoTimeMs - offsetMs
+        if (target < points.first().timeMs || target > points.last().timeMs) return null
         val index = points.binarySearchBy(target) { it.timeMs }
         if (index >= 0) return points[index]
         val right = (-index - 1).coerceIn(0, points.lastIndex)
