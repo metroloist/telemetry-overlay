@@ -86,9 +86,10 @@ class MainActivity:ComponentActivity(){
     }
     LaunchedEffect(exporter){while(exporter!=null){exporter?.updateProgress();delay(500)}}
     val videoGlobalMs=videos.take(clipIndex).sumOf{it.durationMs}+position
-    // During manual synchronisation the gauges must describe the FIT point selected
-    // by the slider, not the (still unlinked) video timestamp.
-    val selectedFitPoint=track?.atVideoTime(fitCursorMs,0L)
+    // Before the first anchor, show the FIT point selected with the slider.
+    // Once linked, follow the playing video through the established mapping.
+    val previewPoint=if(anchors.isEmpty()) track?.atVideoTime(fitCursorMs,0L)
+        else track?.atVideoTime(mappedTelemetryMs(videoGlobalMs,anchors),0L)
     MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xff75e6a4),background=Color(0xff0b0d10))){
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("TELEMETRY OVERLAY",style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.primary)
@@ -102,8 +103,8 @@ class MainActivity:ComponentActivity(){
                 AndroidView({PlayerView(it).apply{this.player=player;useController=true}},Modifier.fillMaxWidth().aspectRatio(16/9f))
             }
             if(track!=null){
-                Text("ДАННЫЕ В ВЫБРАННОЙ ТОЧКЕ FIT",color=Color.Gray,style=MaterialTheme.typography.labelMedium)
-                TelemetryPanel(selectedFitPoint);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)}
+                Text(if(anchors.isEmpty())"ДАННЫЕ В ВЫБРАННОЙ ТОЧКЕ FIT" else "ТЕЛЕМЕТРИЯ ПО ВРЕМЕНИ ВИДЕО",color=Color.Gray,style=MaterialTheme.typography.labelMedium)
+                TelemetryPanel(previewPoint);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)}
                 val fitDuration=(track!!.points.last().timeMs-track!!.points.first().timeMs).coerceAtLeast(1L)
                 Text("Точка FIT: ${formatTime(fitCursorMs)} • кадр видео: ${formatTime(videoGlobalMs)}")
                 Slider(fitCursorMs.toFloat(),{fitCursorMs=it.toLong()},valueRange=0f..fitDuration.toFloat())
