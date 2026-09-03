@@ -64,12 +64,12 @@ class MainActivity:ComponentActivity(){
         }.onSuccess{track=it;error=null}.onFailure{e->error=e.message}}
     }
     LaunchedEffect(videos,track){
-        val telemetryTime=track?.startTimeMs
-        if(videos.isNotEmpty()&&telemetryTime!=null){
-            val times=videos.mapNotNull{it.startTimeMs}
-            syncStatus=if(times.size==videos.size&&times.all{abs(it-telemetryTime)<=6*60*60*1000L})
-                "Автосинхронизация включена: ${videos.size} видео по времени съёмки"
-            else "Точное время найдено не во всех видео — используется последовательная склейка и ручная поправка"
+        val telemetry=track
+        if(videos.isNotEmpty()&&telemetry!=null){
+            val plan=buildSyncPlan(videos,telemetry)
+            syncStatus=if(plan.automatic)
+                "Единая синхронизация ${videos.size} частей по времени GoPro"+(plan.clockCorrectionHours?.takeIf{it!=0}?.let{" • поправка часов ${if(it>0)"+" else ""}$it ч"}?:"")
+            else "Время GoPro не найдено — части синхронизированы последовательно"
             offsetTenths=0
         }
     }
@@ -84,10 +84,7 @@ class MainActivity:ComponentActivity(){
     }
     LaunchedEffect(exporter){while(exporter!=null){exporter?.updateProgress();delay(500)}}
     val selectedClip=videos.getOrNull(clipIndex)
-    val elapsedBefore=videos.take(clipIndex).sumOf{it.durationMs}
-    val telemetryStart=track?.startTimeMs
-    val validClipStart=selectedClip?.startTimeMs?.takeIf{telemetryStart!=null&&abs(it-telemetryStart)<=6*60*60*1000L}
-    val automaticOffset=validClipStart?.let{telemetryStart!!-it} ?: -elapsedBefore
+    val automaticOffset=if(track!=null&&videos.isNotEmpty())buildSyncPlan(videos,track!!).offsetsMs.getOrElse(clipIndex){0L}else 0L
     val point=track?.atVideoTime(position,automaticOffset+offsetTenths*100L)
     MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xff75e6a4),background=Color(0xff0b0d10))){
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
