@@ -8,6 +8,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,6 +38,8 @@ class MainActivity:ComponentActivity(){
     val context=androidx.compose.ui.platform.LocalContext.current
     var videos by remember{mutableStateOf<List<VideoClip>>(emptyList())}; var track by remember{mutableStateOf<TelemetryTrack?>(null)}
     var error by remember{mutableStateOf<String?>(null)}; var offsetTenths by remember{mutableIntStateOf(0)}
+    var anchors by remember{mutableStateOf<List<SyncAnchor>>(emptyList())}
+    var fitCursorMs by remember{mutableLongStateOf(0L)}
     var syncStatus by remember{mutableStateOf<String?>(null)}
     var exporter by remember{mutableStateOf<VideoExporter?>(null)}
     var exportProgress by remember{mutableIntStateOf(-1)}
@@ -61,33 +66,29 @@ class MainActivity:ComponentActivity(){
             val bytes=context.contentResolver.openInputStream(it)!!.use{stream->stream.readBytes()}
             val isFit=bytes.size>=12 && String(bytes,8,4,Charsets.US_ASCII)==".FIT"
             if(isFit) FitParser.parse(ByteArrayInputStream(bytes)) else GpxParser.parse(ByteArrayInputStream(bytes))
-        }.onSuccess{track=it;error=null}.onFailure{e->error=e.message}}
+        }.onSuccess{track=it;fitCursorMs=0;anchors=emptyList();error=null}.onFailure{e->error=e.message}}
     }
     LaunchedEffect(videos,track){
         val telemetry=track
         if(videos.isNotEmpty()&&telemetry!=null){
-            val plan=buildSyncPlan(videos,telemetry)
-            syncStatus=if(plan.automatic)
-                "Единая синхронизация ${videos.size} частей по времени GoPro"+(plan.clockCorrectionHours?.takeIf{it!=0}?.let{" • поправка часов ${if(it>0)"+" else ""}$it ч"}?:"")
-            else "Время GoPro не найдено — части синхронизированы последовательно"
+            syncStatus="Выберите кадр видео и соответствующую точку FIT"
             offsetTenths=0
         }
     }
     val savePicker=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")){destination->
         if(destination!=null && videos.isNotEmpty() && track!=null){
             exportDone=false; exportProgress=0; error=null
-            exporter=VideoExporter(context,videos,destination,track!!,offsetTenths*100L,
+            exporter=VideoExporter(context,videos,destination,track!!,anchors,offsetTenths*100L,
                 onProgress={exportProgress=it},
                 onComplete={exportDone=true;exportProgress=-1;exporter=null},
                 onError={error=it;exportProgress=-1;exporter=null}).also{it.start()}
         }
     }
     LaunchedEffect(exporter){while(exporter!=null){exporter?.updateProgress();delay(500)}}
-    val selectedClip=videos.getOrNull(clipIndex)
-    val automaticOffset=if(track!=null&&videos.isNotEmpty())buildSyncPlan(videos,track!!).offsetsMs.getOrElse(clipIndex){0L}else 0L
-    val point=track?.atVideoTime(position,automaticOffset+offsetTenths*100L)
+    val videoGlobalMs=videos.take(clipIndex).sumOf{it.durationMs}+position
+    val point=track?.atVideoTime(mappedTelemetryMs(videoGlobalMs,anchors)-offsetTenths*100L,0L)
     MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xff75e6a4),background=Color(0xff0b0d10))){
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("TELEMETRY OVERLAY",style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.primary)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({videoPicker.launch(arrayOf("video/*"))}){Text("Выбрать видео")};Button({dataPicker.launch(arrayOf("*/*"))}){Text("GPX / FIT")}}
             if(videos.isNotEmpty()){
@@ -98,8 +99,17 @@ class MainActivity:ComponentActivity(){
                 Text("Выбрано видео: ${videos.size}",color=Color.Gray)
                 AndroidView({PlayerView(it).apply{this.player=player;useController=true}},Modifier.fillMaxWidth().aspectRatio(16/9f))
             }
-            if(track!=null){TelemetryPanel(point);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)};Text("Ручная поправка: ${fmt(offsetTenths/10.0)} с")
-                Slider(offsetTenths.toFloat().coerceIn(-216000f,216000f),{offsetTenths=it.roundToInt()},valueRange=-216000f..216000f)
+            if(track!=null){TelemetryPanel(point);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)}
+                val fitDuration=(track!!.points.last().timeMs-track!!.points.first().timeMs).coerceAtLeast(1L)
+                Text("Точка FIT: ${formatTime(fitCursorMs)} • кадр видео: ${formatTime(videoGlobalMs)}")
+                TelemetryGraph(track!!,fitCursorMs)
+                Slider(fitCursorMs.toFloat(),{fitCursorMs=it.toLong()},valueRange=0f..fitDuration.toFloat())
+                RoutePreview(track!!,fitCursorMs)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    Button({anchors=(anchors+SyncAnchor(videoGlobalMs,fitCursorMs)).takeLast(2);syncStatus="Связано точек: ${anchors.size}"}){Text(if(anchors.isEmpty())"Связать точку 1" else "Связать точку 2")}
+                    TextButton({anchors=emptyList();syncStatus="Привязки сброшены"}){Text("Сбросить")}
+                }
+                Text("Тонкая поправка: ${fmt(offsetTenths/10.0)} с")
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){listOf(-10,-1,1,10).forEach{d->OutlinedButton({offsetTenths+=d}){Text(if(d>0)"+${d/10.0}" else "${d/10.0}")}}}
                 Text("${track!!.source}: ${track!!.points.size} точек • точная настройка 0,1 с",color=Color.Gray)
                 Button(
@@ -131,6 +141,21 @@ class MainActivity:ComponentActivity(){
 }
 @Composable private fun Gauge(name:String,value:String?,unit:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(name,color=Color.Gray,style=MaterialTheme.typography.labelSmall);Text(value?:"—",style=MaterialTheme.typography.headlineSmall);Text(unit,color=Color.Gray,style=MaterialTheme.typography.labelSmall)}}
 private fun fmt(v:Double)=String.format(Locale.US,"%.1f",v)
+private fun formatTime(ms:Long)=String.format(Locale.US,"%02d:%02d:%02d",ms/3_600_000,(ms/60_000)%60,(ms/1000)%60)
+
+@Composable private fun TelemetryGraph(track:TelemetryTrack,cursorMs:Long){
+    val points=track.points;val duration=(points.last().timeMs-points.first().timeMs).coerceAtLeast(1);val maxPower=points.maxOfOrNull{it.powerW?:0}?.coerceAtLeast(1)?:1
+    Canvas(Modifier.fillMaxWidth().height(90.dp).background(Color(0xff11161d))){
+        val path=androidx.compose.ui.graphics.Path();points.forEachIndexed{i,p->val x=(p.timeMs-points.first().timeMs).toFloat()/duration.toFloat()*size.width;val y=size.height-(p.powerW?:0).toFloat()/maxPower.toFloat()*size.height;if(i==0)path.moveTo(x,y)else path.lineTo(x,y)}
+        drawPath(path,Color(0xff75e6a4),style=androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()));val x=cursorMs.toFloat()/duration.toFloat()*size.width;drawLine(Color.White,androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),2.dp.toPx())
+    }
+}
+
+@Composable private fun RoutePreview(track:TelemetryTrack,cursorMs:Long){
+    val gps=track.points.filter{it.latitude!=null&&it.longitude!=null};if(gps.size<2)return
+    val now=track.points.first().timeMs+cursorMs;val minLat=gps.minOf{it.latitude!!};val maxLat=gps.maxOf{it.latitude!!};val minLon=gps.minOf{it.longitude!!};val maxLon=gps.maxOf{it.longitude!!}
+    Canvas(Modifier.fillMaxWidth().height(150.dp).background(Color(0xff11161d)).padding(12.dp)){fun x(v:Double)=((v-minLon)/(maxLon-minLon).coerceAtLeast(1e-9)*size.width).toFloat();fun y(v:Double)=(size.height-(v-minLat)/(maxLat-minLat).coerceAtLeast(1e-9)*size.height).toFloat();fun draw(until:Long,color:Color){val p=androidx.compose.ui.graphics.Path();var first=true;gps.forEach{g->if(g.timeMs<=until){if(first){p.moveTo(x(g.longitude!!),y(g.latitude!!));first=false}else p.lineTo(x(g.longitude!!),y(g.latitude!!))}};drawPath(p,color,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))};draw(Long.MAX_VALUE,Color.Gray);draw(now,Color(0xff75e6a4))}
+}
 
 private fun readVideoInfo(context:android.content.Context,uri:Uri):VideoClip{
     val retriever=MediaMetadataRetriever()
