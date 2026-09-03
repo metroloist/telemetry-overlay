@@ -112,9 +112,13 @@ class MainActivity:ComponentActivity(){
                     Button({anchors=(anchors+SyncAnchor(videoGlobalMs,fitCursorMs)).takeLast(2);syncStatus="Связано точек: ${anchors.size}"}){Text(if(anchors.isEmpty())"Связать точку 1" else "Связать точку 2")}
                     TextButton({anchors=emptyList();syncStatus="Привязки сброшены"}){Text("Сбросить")}
                 }
-                Text("Тонкая поправка: ${fmt(offsetTenths/10.0)} с")
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){listOf(-10,-1,1,10).forEach{d->OutlinedButton({offsetTenths+=d}){Text(if(d>0)"+${d/10.0}" else "${d/10.0}")}}}
-                Text("${track!!.source}: ${track!!.points.size} точек • точная настройка 0,1 с",color=Color.Gray)
+                Text("Сдвиг выбранной точки FIT")
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
+                    listOf(-1000L to "−1 с",-500L to "−0,5 с",500L to "+0,5 с",1000L to "+1 с").forEach{(delta,label)->
+                        OutlinedButton({fitCursorMs=(fitCursorMs+delta).coerceIn(0L,fitDuration)}){Text(label)}
+                    }
+                }
+                Text("${track!!.source}: ${track!!.points.size} точек • точная настройка 0,5 с",color=Color.Gray)
                 Button(
                     onClick={savePicker.launch("telemetry-${System.currentTimeMillis()}.mp4")},
                     enabled=videos.isNotEmpty() && exportProgress<0,
