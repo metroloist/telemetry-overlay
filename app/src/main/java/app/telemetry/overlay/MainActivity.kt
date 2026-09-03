@@ -106,8 +106,6 @@ class MainActivity:ComponentActivity(){
                 TelemetryPanel(selectedFitPoint);syncStatus?.let{Text(it,color=MaterialTheme.colorScheme.primary)}
                 val fitDuration=(track!!.points.last().timeMs-track!!.points.first().timeMs).coerceAtLeast(1L)
                 Text("Точка FIT: ${formatTime(fitCursorMs)} • кадр видео: ${formatTime(videoGlobalMs)}")
-                Text("График мощности — белая линия показывает выбранную точку FIT",color=Color.Gray,style=MaterialTheme.typography.bodySmall)
-                TelemetryGraph(track!!,fitCursorMs)
                 Slider(fitCursorMs.toFloat(),{fitCursorMs=it.toLong()},valueRange=0f..fitDuration.toFloat())
                 RoutePreview(track!!,fitCursorMs)
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
@@ -147,14 +145,6 @@ class MainActivity:ComponentActivity(){
 @Composable private fun Gauge(name:String,value:String?,unit:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(name,color=Color.Gray,style=MaterialTheme.typography.labelSmall);Text(value?:"—",style=MaterialTheme.typography.headlineSmall);Text(unit,color=Color.Gray,style=MaterialTheme.typography.labelSmall)}}
 private fun fmt(v:Double)=String.format(Locale.US,"%.1f",v)
 private fun formatTime(ms:Long)=String.format(Locale.US,"%02d:%02d:%02d",ms/3_600_000,(ms/60_000)%60,(ms/1000)%60)
-
-@Composable private fun TelemetryGraph(track:TelemetryTrack,cursorMs:Long){
-    val points=track.points;val duration=(points.last().timeMs-points.first().timeMs).coerceAtLeast(1);val maxPower=points.maxOfOrNull{it.powerW?:0}?.coerceAtLeast(1)?:1
-    Canvas(Modifier.fillMaxWidth().height(90.dp).background(Color(0xff11161d))){
-        val path=androidx.compose.ui.graphics.Path();points.forEachIndexed{i,p->val x=(p.timeMs-points.first().timeMs).toFloat()/duration.toFloat()*size.width;val y=size.height-(p.powerW?:0).toFloat()/maxPower.toFloat()*size.height;if(i==0)path.moveTo(x,y)else path.lineTo(x,y)}
-        drawPath(path,Color(0xff75e6a4),style=androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()));val x=cursorMs.toFloat()/duration.toFloat()*size.width;drawLine(Color.White,androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),2.dp.toPx())
-    }
-}
 
 @Composable private fun RoutePreview(track:TelemetryTrack,cursorMs:Long){
     val gps=track.points.filter{it.latitude!=null&&it.longitude!=null};if(gps.size<2)return
