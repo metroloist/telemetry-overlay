@@ -27,6 +27,7 @@ class VideoExporter(
     private val sources: List<VideoClip>,
     private val destination: Uri,
     track: TelemetryTrack,
+    private val anchors:List<SyncAnchor>,
     offsetMs: Long,
     private val onProgress: (Int) -> Unit,
     private val onComplete: () -> Unit,
@@ -67,13 +68,13 @@ class VideoExporter(
     }
 
     fun start() {
-        val syncPlan=buildSyncPlan(sources,telemetry)
+        var elapsedMs=0L
         val items=sources.mapIndexed{index,source->
-            val automaticOffset=syncPlan.offsetsMs[index]
-            val overlay=TelemetryCanvasOverlay(telemetry,automaticOffset+manualOffsetMs)
+            val overlay=TelemetryCanvasOverlay(telemetry,elapsedMs,anchors,manualOffsetMs)
             val videoEffects:List<Effect> = listOf(OverlayEffect(listOf(overlay)))
             EditedMediaItem.Builder(MediaItem.fromUri(source.uri))
                 .setEffects(Effects(emptyList(),videoEffects)).build()
+                .also{elapsedMs+=source.durationMs}
         }
         val sequence=EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO,C.TRACK_TYPE_VIDEO))
             .addItems(items).build()
