@@ -13,7 +13,6 @@ import java.util.Locale
 @OptIn(UnstableApi::class)
 class TelemetryCanvasOverlay(
     private val track: TelemetryTrack,
-    private val clipStartMs:Long,
     private val anchors:List<SyncAnchor>,
     private val fineOffsetMs: Long,
 ) : CanvasOverlay(true) {
@@ -25,7 +24,10 @@ class TelemetryCanvasOverlay(
 
     override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
         canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
-        val telemetryMs=mappedTelemetryMs(clipStartMs+presentationTimeUs/1000L,anchors)-fineOffsetMs
+        // Media3 supplies presentationTimeUs on the composition's continuous timeline.
+        // Adding chapter durations here a second time made every GoPro part after
+        // the first jump ahead in FIT data and eventually run past the track end.
+        val telemetryMs=mappedTelemetryMs(presentationTimeUs/1000L,anchors)-fineOffsetMs
         val point = track.atVideoTime(telemetryMs,0L) ?: return
         val scale = canvas.width / 1920f
         val left = 58f * scale
