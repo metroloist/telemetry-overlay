@@ -57,9 +57,13 @@ class TelemetryCanvasOverlay(
         val bg=Paint().apply{color=Color.argb(175,12,15,18)};canvas.drawRoundRect(left,top,left+width,top+height,18f*scale,18f*scale,bg)
         fun x(lon:Double)=left+20f*scale+((lon-minLon)/(maxLon-minLon).coerceAtLeast(1e-9)*(width-40f*scale)).toFloat()
         fun y(lat:Double)=top+height-20f*scale-((lat-minLat)/(maxLat-minLat).coerceAtLeast(1e-9)*(height-40f*scale)).toFloat()
-        fun path(until:Long,color:Int,stroke:Float){val p=android.graphics.Path();var begun=false;for(g in gps){if(g.timeMs>until)break;val xx=x(g.longitude!!);val yy=y(g.latitude!!);if(!begun){p.moveTo(xx,yy);begun=true}else p.lineTo(xx,yy)};canvas.drawPath(p,Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;style=Paint.Style.STROKE;strokeWidth=stroke*scale;strokeCap=Paint.Cap.ROUND})}
-        path(Long.MAX_VALUE,Color.GRAY,5f);path(point.timeMs,Color.rgb(117,230,164),7f)
-        if(point.latitude!=null&&point.longitude!=null)canvas.drawCircle(x(point.longitude),y(point.latitude),9f*scale,Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE})
+        fun path(from:Long,until:Long,color:Int,stroke:Float){val p=android.graphics.Path();var begun=false;for(g in gps){if(g.timeMs in from..until){val xx=x(g.longitude!!);val yy=y(g.latitude!!);if(!begun){p.moveTo(xx,yy);begun=true}else p.lineTo(xx,yy)}};canvas.drawPath(p,Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;style=Paint.Style.STROKE;strokeWidth=stroke*scale;strokeCap=Paint.Cap.ROUND})}
+        path(Long.MIN_VALUE,Long.MAX_VALUE,Color.GRAY,5f)
+        path(point.timeMs-45_000L,point.timeMs,Color.rgb(117,230,164),7f)
+        if(point.latitude!=null&&point.longitude!=null){
+            canvas.drawCircle(x(point.longitude),y(point.latitude),12f*scale,Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE})
+            canvas.drawCircle(x(point.longitude),y(point.latitude),8f*scale,Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(255,159,67)})
+        }
     }
 
     private fun decimal(value: Double?) = value?.let { String.format(Locale.US, "%.1f", it) } ?: "—"
