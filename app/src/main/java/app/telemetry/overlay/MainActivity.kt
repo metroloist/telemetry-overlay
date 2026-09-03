@@ -108,9 +108,10 @@ class MainActivity:ComponentActivity(){
                 val fitDuration=(track!!.points.last().timeMs-track!!.points.first().timeMs).coerceAtLeast(1L)
                 Text("Точка FIT: ${formatTime(fitCursorMs)} • кадр видео: ${formatTime(videoGlobalMs)}")
                 Slider(fitCursorMs.toFloat(),{fitCursorMs=it.toLong()},valueRange=0f..fitDuration.toFloat())
-                RoutePreview(track!!,fitCursorMs)
+                val routeCursorMs=if(anchors.isEmpty())fitCursorMs else mappedTelemetryMs(videoGlobalMs,anchors)
+                RoutePreview(track!!,routeCursorMs)
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                    Button({anchors=(anchors+SyncAnchor(videoGlobalMs,fitCursorMs)).takeLast(2);syncStatus="Связано точек: ${anchors.size}"}){Text(if(anchors.isEmpty())"Связать точку 1" else "Связать точку 2")}
+                    Button({anchors=listOf(SyncAnchor(videoGlobalMs,fitCursorMs));syncStatus="Синхронизация выполнена по одной точке"}){Text(if(anchors.isEmpty())"Синхронизировать" else "Синхронизировать заново")}
                     TextButton({anchors=emptyList();syncStatus="Привязки сброшены"}){Text("Сбросить")}
                 }
                 Text("Сдвиг выбранной точки FIT")
@@ -157,12 +158,18 @@ private fun formatTime(ms:Long)=String.format(Locale.US,"%02d:%02d:%02d",ms/3_60
     Canvas(Modifier.fillMaxWidth().height(150.dp).background(Color(0xff11161d)).padding(12.dp)){
         fun px(v:Double):Float=((v-minLon)/(maxLon-minLon).coerceAtLeast(1e-9)*size.width).toFloat()
         fun py(v:Double):Float=(size.height-(v-minLat)/(maxLat-minLat).coerceAtLeast(1e-9)*size.height).toFloat()
-        fun route(until:Long,color:Color){
+        fun route(from:Long,until:Long,color:Color,stroke:Float){
             val path=androidx.compose.ui.graphics.Path();var first=true
-            gps.forEach{g->if(g.timeMs<=until){if(first){path.moveTo(px(g.longitude!!),py(g.latitude!!));first=false}else path.lineTo(px(g.longitude!!),py(g.latitude!!))}}
-            drawPath(path,color,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+            gps.forEach{g->if(g.timeMs in from..until){if(first){path.moveTo(px(g.longitude!!),py(g.latitude!!));first=false}else path.lineTo(px(g.longitude!!),py(g.latitude!!))}}
+            drawPath(path,color,style=androidx.compose.ui.graphics.drawscope.Stroke(stroke.dp.toPx()))
         }
-        route(Long.MAX_VALUE,Color.Gray);route(now,Color(0xff75e6a4))
+        route(Long.MIN_VALUE,Long.MAX_VALUE,Color.Gray,3f)
+        route(now-45_000L,now,Color(0xff75e6a4),5f)
+        gps.minByOrNull{abs(it.timeMs-now)}?.let{current->
+            val center=androidx.compose.ui.geometry.Offset(px(current.longitude!!),py(current.latitude!!))
+            drawCircle(Color.White,7.dp.toPx(),center)
+            drawCircle(Color(0xffff9f43),4.5.dp.toPx(),center)
+        }
     }
 }
 
