@@ -67,14 +67,11 @@ class VideoExporter(
     }
 
     fun start() {
-        var elapsedMs=0L
-        val items=sources.map{source->
-            val telemetryStart=telemetry.startTimeMs
-            val validStart=source.startTimeMs?.takeIf{telemetryStart!=null&&abs(it-telemetryStart)<=6*60*60*1000L}
-            val automaticOffset=validStart?.let{telemetryStart!!-it} ?: -elapsedMs
+        val syncPlan=buildSyncPlan(sources,telemetry)
+        val items=sources.mapIndexed{index,source->
+            val automaticOffset=syncPlan.offsetsMs[index]
             val overlay=TelemetryCanvasOverlay(telemetry,automaticOffset+manualOffsetMs)
             val videoEffects:List<Effect> = listOf(OverlayEffect(listOf(overlay)))
-            elapsedMs+=source.durationMs
             EditedMediaItem.Builder(MediaItem.fromUri(source.uri))
                 .setEffects(Effects(emptyList(),videoEffects)).build()
         }
@@ -95,3 +92,30 @@ class VideoExporter(
 }
 
 data class VideoClip(val uri:Uri,val startTimeMs:Long?,val durationMs:Long)
+
+data class SyncPlan(val offsetsMs:List<Long>,val automatic:Boolean,val clockCorrectionHours:Int?)
+
+/** Builds one coherent timeline for all GoPro chapters and corrects a camera clock timezone error. */
+fun buildSyncPlan(sources:List<VideoClip>,track:TelemetryTrack):SyncPlan{
+    val fitStart=track.points.firstOrNull()?.timeMs ?: 0L
+    val fitEnd=track.points.lastOrNull()?.timeMs ?: fitStart
+    val totalVideo=sources.sumOf{it.durationMs}
+    val firstRaw=sources.firstOrNull()?.startTimeMs
+    val allTimed=sources.isNotEmpty()&&sources.all{it.startTimeMs!=null}
+    val correctionHours=if(firstRaw!=null){
+        (-14..14).minByOrNull{hours->
+            val candidate=firstRaw+hours*3_600_000L
+            abs(candidate-fitStart)+abs(candidate+totalVideo-fitEnd)
+        }
+    }else null
+    val correctedFirst=if(firstRaw!=null&&correctionHours!=null)firstRaw+correctionHours*3_600_000L else fitStart
+    val timelineStarts=mutableListOf<Long>();var elapsed=0L
+    for(source in sources){
+        val corrected=source.startTimeMs?.let{raw->correctionHours?.let{raw+it*3_600_000L}}
+        val expected=correctedFirst+elapsed
+        // GoPro chapter timestamps should follow the continuous recording. If not, keep one sequential timeline.
+        timelineStarts+=if(allTimed&&corrected!=null&&abs(corrected-expected)<=10_000L)corrected else expected
+        elapsed+=source.durationMs
+    }
+    return SyncPlan(timelineStarts.map{fitStart-it},firstRaw!=null,correctionHours)
+}
