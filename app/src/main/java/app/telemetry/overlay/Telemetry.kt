@@ -34,7 +34,7 @@ data class TelemetryTrack(val points: List<TelemetryPoint>, val source: String) 
             i(a.powerW,b.powerW), d(a.latitude,b.latitude), d(a.longitude,b.longitude))
     }
 
-    fun averagePowerAt(videoTimeMs:Long,offsetMs:Long,windowMs:Long=10_000L):Int? {
+    fun averagePowerAt(videoTimeMs:Long,offsetMs:Long,windowMs:Long=3_000L):Int? {
         if(points.isEmpty())return null
         val target=(startTimeMs?:return null)+videoTimeMs-offsetMs
         val from=target-windowMs
