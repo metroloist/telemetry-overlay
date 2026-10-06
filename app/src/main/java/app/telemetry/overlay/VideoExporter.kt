@@ -33,7 +33,8 @@ class VideoExporter(
     private val onComplete: () -> Unit,
     private val onError: (String) -> Unit,
 ) {
-    private val workDirectory = File(context.getExternalFilesDir(null) ?: context.filesDir, "telemetry-work")\n    private val temporary = File(workDirectory, "telemetry-export-${System.currentTimeMillis()}.mp4")
+    private val workDirectory = File(context.getExternalFilesDir(null) ?: context.filesDir, "telemetry-work")
+    private val temporary = File(workDirectory, "telemetry-export-${System.currentTimeMillis()}.mp4")
     private val telemetry = track
     private val manualOffsetMs = offsetMs
     private val transformer: Transformer
