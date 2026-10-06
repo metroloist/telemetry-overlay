@@ -33,6 +33,27 @@ data class TelemetryTrack(val points: List<TelemetryPoint>, val source: String) 
             d(a.altitudeM,b.altitudeM), d(a.ascentM,b.ascentM), i(a.heartRate,b.heartRate),
             i(a.powerW,b.powerW), d(a.latitude,b.latitude), d(a.longitude,b.longitude))
     }
+
+    fun averagePowerAt(videoTimeMs:Long,offsetMs:Long,windowMs:Long=10_000L):Int? {
+        if(points.isEmpty())return null
+        val target=(startTimeMs?:return null)+videoTimeMs-offsetMs
+        val from=target-windowMs
+        fun lowerBound(time:Long):Int{
+            var low=0;var high=points.size
+            while(low<high){
+                val mid=(low+high) ushr 1
+                if(points[mid].timeMs<time)low=mid+1 else high=mid
+            }
+            return low
+        }
+        val first=lowerBound(from)
+        val afterLast=lowerBound(if(target==Long.MAX_VALUE)target else target+1L)
+        var sum=0L;var count=0
+        for(index in first until afterLast){
+            points[index].powerW?.let{sum+=it;count++}
+        }
+        return if(count==0)null else kotlin.math.round(sum.toDouble()/count).toInt()
+    }
 }
 
 data class SyncAnchor(val videoMs:Long,val telemetryMs:Long)
