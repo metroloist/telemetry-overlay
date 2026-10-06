@@ -47,9 +47,10 @@ class VideoExporter(
                             // Some devices finish the callback a fraction before the file becomes
                             // visible to another thread. Wait briefly, but never use the cache
                             // directory: Android may purge a multi-gigabyte cache export.
-                            repeat(20) {
-                                if (temporary.isFile && temporary.length() > 0L) return@repeat
+                            var attempts = 0
+                            while ((!temporary.isFile || temporary.length() == 0L) && attempts < 20) {
                                 Thread.sleep(250)
+                                attempts++
                             }
                             check(temporary.isFile && temporary.length() > 0L) {
                                 "Монтаж завершён, но рабочий видеофайл не найден"
