@@ -36,7 +36,7 @@ class TelemetryCanvasOverlay(
 
         val telemetryMs=mappedTelemetryMs(presentationTimeUs/1000L,anchors)-fineOffsetMs
         val point=track.atVideoTime(telemetryMs,0L)?:return
-        val power10s=track.averagePowerAt(telemetryMs,0L,10_000L)
+        val power3s=track.averagePowerAt(telemetryMs,0L,3_000L)
 
         val left=58f*scale
         val bottom=canvas.height-43f*scale
@@ -52,7 +52,7 @@ class TelemetryCanvasOverlay(
         val row4=bottom-25f*scale
 
         canvas.drawText("СКОРОСТЬ  ${decimal(point.speedKmh)} км/ч",x,row1,text)
-        canvas.drawText("МОЩНОСТЬ 10 с  ${integer(power10s)} Вт",x+455f*scale,row1,text)
+        canvas.drawText("МОЩНОСТЬ 3 с  ${integer(power3s)} Вт",x+455f*scale,row1,text)
         drawZoneIndicator(canvas,"ПУЛЬС",point.heartRate,"уд/мин",heartRateZone(point.heartRate),x,row2,scale)
         drawZoneIndicator(canvas,"МГН. МОЩНОСТЬ",point.powerW,"Вт",powerZone(point.powerW),x,row3,scale)
         canvas.drawText(
@@ -90,7 +90,7 @@ class TelemetryCanvasOverlay(
             }
         }
 
-        text.color=if(zone in 1..5)zoneColors[zone-1] else Color.WHITE
+        text.color=Color.WHITE
         val shown=value?.toString()?:"—"
         canvas.drawText("$shown $unit  Z${if(zone==0)"—" else zone}",left+500f*scale,baseline,text)
         text.color=Color.WHITE
