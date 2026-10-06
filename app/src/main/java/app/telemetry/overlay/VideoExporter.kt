@@ -33,7 +33,7 @@ class VideoExporter(
     private val onComplete: () -> Unit,
     private val onError: (String) -> Unit,
 ) {
-    private val temporary = File(context.cacheDir, "telemetry-export-${System.currentTimeMillis()}.mp4")
+    private val workDirectory = File(context.getExternalFilesDir(null) ?: context.filesDir, "telemetry-work")\n    private val temporary = File(workDirectory, "telemetry-export-${System.currentTimeMillis()}.mp4")
     private val telemetry = track
     private val manualOffsetMs = offsetMs
     private val transformer: Transformer
@@ -44,11 +44,23 @@ class VideoExporter(
                 override fun onCompleted(composition: androidx.media3.transformer.Composition, exportResult: ExportResult) {
                     Thread {
                         val result = runCatching {
-                            context.contentResolver.openOutputStream(destination, "w")!!.use { output ->
-                                temporary.inputStream().use { input -> input.copyTo(output) }
+                            // Some devices finish the callback a fraction before the file becomes
+                            // visible to another thread. Wait briefly, but never use the cache
+                            // directory: Android may purge a multi-gigabyte cache export.
+                            repeat(20) {
+                                if (temporary.isFile && temporary.length() > 0L) return@repeat
+                                Thread.sleep(250)
+                            }
+                            check(temporary.isFile && temporary.length() > 0L) {
+                                "Монтаж завершён, но рабочий видеофайл не найден"
+                            }
+                            val output = context.contentResolver.openOutputStream(destination, "w")
+                                ?: error("Не удалось открыть выбранный файл для сохранения")
+                            output.use { stream ->
+                                temporary.inputStream().use { input -> input.copyTo(stream) }
                             }
                         }
-                        temporary.delete()
+                        if (result.isSuccess) temporary.delete()
                         Handler(Looper.getMainLooper()).post {
                             result.onSuccess { onProgress(100); onComplete() }
                                 .onFailure { onError(it.message ?: "Не удалось сохранить видео") }
@@ -68,6 +80,11 @@ class VideoExporter(
     }
 
     fun start() {
+        if (!workDirectory.exists() && !workDirectory.mkdirs()) {
+            onError("Не удалось создать рабочую папку для монтажа")
+            return
+        }
+        if (temporary.exists()) temporary.delete()
         val items=sources.map{source->
             val overlay=TelemetryCanvasOverlay(telemetry,anchors,manualOffsetMs)
             val videoEffects:List<Effect> = listOf(OverlayEffect(listOf(overlay)))
